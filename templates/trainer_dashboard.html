@@ -1,10 +1,45 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+<!-- trainer_dashboard.html -->
+{% extends "base.html" %}
 
-</body>
-</html>
+{% block title %}Мои группы - Swim CRM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1><i class="fas fa-chalkboard-user"></i> {{ 'Все группы' if current_user.type == 'admin' else 'Мои группы' }}</h1>
+    </div>
+
+    {% if groups %}
+        <div class="groups-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
+            {% for group in groups %}
+                <div class="card">
+                    <div class="card-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <h3><i class="fas fa-users"></i> {{ group.name }}</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 15px;">
+                            <div class="stat-card"><div class="stat-number">{{ group.enrolled or 0 }}/{{ group.max_students }}</div><div class="stat-label">Учеников</div></div>
+                            <div class="stat-card"><div class="stat-number">{{ 'Дневная' if group.shift == 'day' else 'Вечерняя' }}</div><div class="stat-label">Смена</div></div>
+                        </div>
+                        <div class="info-item"><label>Тренер:</label><span>{{ group.trainer_name or 'Не назначен' }}</span></div>
+                        <div class="info-item"><label>Возраст:</label><span>{{ group.min_age }}-{{ group.max_age }} лет</span></div>
+                        <div class="form-actions" style="margin-top: 20px;">
+                            <a href="/trainer/group/{{ group.id }}" class="btn btn-primary"><i class="fas fa-eye"></i> Управление</a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="card">
+            <div class="card-body" style="text-align: center;">
+                <div class="empty-icon"><i class="fas fa-users-slash fa-4x"></i></div>
+                <p>У вас пока нет групп</p>
+                {% if current_user.type == 'admin' %}
+                    <small>Создайте группы в панели администратора</small>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

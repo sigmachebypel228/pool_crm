@@ -1,10 +1,34 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+<!-- login.html -->
+{% extends "base.html" %}
 
-</body>
-</html>
+{% block title %}Вход - Swim CRM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div style="max-width: 400px; margin: 40px auto;">
+        <div class="card">
+            <div class="card-header" style="text-align: center;"><h2><i class="fas fa-sign-in-alt"></i> Вход в систему</h2></div>
+            <div class="card-body">
+                {% if error %}
+                    <div class="alert alert-error">{{ error }}</div>
+                {% endif %}
+                <form method="post" action="/login">
+                    <div class="form-group">
+                        <label for="username">Логин / Телефон</label>
+                        <input type="text" id="username" name="username" required placeholder="admin / +7XXX...">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Пароль</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Войти</button>
+                    </div>
+                </form>
+                <hr style="margin: 20px 0;">
+                <p style="text-align: center;"><a href="/apply" class="btn btn-outline">Записаться на занятия</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,10 +1,45 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+<!-- parent_profile.html -->
+{% extends "base.html" %}
 
-</body>
-</html>
+{% block title %}Мои дети - Swim CRM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1><i class="fas fa-user-friends"></i> Мои дети</h1>
+        <a href="/apply" class="btn btn-success"><i class="fas fa-plus"></i> Записать ребёнка</a>
+    </div>
+
+    {% if children %}
+        <div class="children-grid">
+            {% for child in children %}
+                <div class="child-card">
+                    <div class="child-name"><i class="fas fa-child"></i> {{ child.full_name }}</div>
+                    <div class="child-info">
+                        <div class="child-info-item"><label>Возраст:</label><span>{{ child.age }} лет</span></div>
+                        <div class="child-info-item"><label>Школа:</label><span>{{ child.school_name }}</span></div>
+                        <div class="child-info-item"><label>Смена:</label><span>{{ 'Дневная' if child.shift == 'day' else 'Вечерняя' }}</span></div>
+                        {% if child.group %}
+                            <div class="child-info-item"><label>Группа:</label><span><strong>{{ child.group.name }}</strong></span></div>
+                            <div class="child-info-item"><label>Тренер:</label><span>{{ child.group.trainer_name }}</span></div>
+                        {% else %}
+                            <div class="child-info-item"><label>Группа:</label><span class="status-absent">Не зачислен</span></div>
+                        {% endif %}
+                    </div>
+                    <div class="form-actions" style="justify-content: flex-start; margin-top: 10px;">
+                        <a href="/parent/child/{{ child.id }}" class="btn btn-primary btn-sm"><i class="fas fa-eye"></i> Подробнее</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="card">
+            <div class="card-body" style="text-align: center;">
+                <div class="empty-icon"><i class="fas fa-child fa-4x"></i></div>
+                <p>У вас пока нет зарегистрированных детей</p>
+                <a href="/apply" class="btn btn-primary">Записать ребёнка на занятия</a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

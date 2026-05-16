@@ -1,10 +1,96 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+<!-- group_details.html -->
+{% extends "base.html" %}
 
-</body>
-</html>
+{% block title %}{{ group.name }} - Swim CRM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1><i class="fas fa-users"></i> {{ group.name }}</h1>
+        <div>
+            <a href="/trainer/dashboard" class="btn btn-outline">
+                <i class="fas fa-arrow-left"></i> Все группы
+            </a>
+            <a href="/trainer/group/{{ group_id }}/attendance" class="btn btn-primary">
+                <i class="fas fa-calendar-check"></i> Посещаемость
+            </a>
+            <a href="/trainer/group/{{ group_id }}/schedule/edit" class="btn btn-secondary">
+                <i class="fas fa-calendar-alt"></i> Расписание
+            </a>
+            <a href="/trainer/group/{{ group_id }}/add_student" class="btn btn-success">
+                <i class="fas fa-user-plus"></i> Добавить ученика
+            </a>
+        </div>
+    </div>
+
+    {% if request.query_params.get('success') == 'added' %}
+        <div class="alert alert-success"><i class="fas fa-check-circle"></i> Ученик добавлен!</div>
+    {% endif %}
+    {% if request.query_params.get('success') == 'removed' %}
+        <div class="alert alert-info"><i class="fas fa-info-circle"></i> Ученик отчислен.</div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-header"><h2><i class="fas fa-info-circle"></i> О группе</h2></div>
+        <div class="card-body">
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-number">{{ students|length }}</div><div class="stat-label">Учеников</div></div>
+                <div class="stat-card"><div class="stat-number">{{ group.max_students }}</div><div class="stat-label">Максимум</div></div>
+                <div class="stat-card"><div class="stat-number">{{ group.trainer_name or 'Не назначен' }}</div><div class="stat-label">Тренер</div></div>
+                <div class="stat-card"><div class="stat-number">{{ 'Дневная' if group.shift == 'day' else 'Вечерняя' }}</div><div class="stat-label">Смена</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h2><i class="fas fa-users"></i> Ученики</h2></div>
+        <div class="card-body">
+            {% if students %}
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>ФИО</th><th>Возраст</th><th>Класс</th><th>Школа</th><th>Действия</th></tr></thead>
+                        <tbody>
+                            {% for s in students %}
+                            <tr>
+                                <td><strong><i class="fas fa-user-graduate"></i> {{ s.full_name }}</strong></td>
+                                <td>{{ s.age }} лет</td>
+                                <td>{% if s.class_number and s.class_number > 0 %}{{ s.class_number }}{% else %}Детский сад{% endif %}</td>
+                                <td>{{ s.school_name }}</td>
+                                <td>
+                                    <a href="/trainer/student/{{ s.id }}/edit" class="btn btn-sm btn-outline"><i class="fas fa-edit"></i></a>
+                                    <form method="post" action="/trainer/group/{{ group_id }}/remove_student/{{ s.id }}" style="display: inline;" onsubmit="return confirm('Отчислить?')">
+                                        <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-user-minus"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty-state"><p>Нет учеников</p><a href="/trainer/group/{{ group_id }}/add_student" class="btn btn-primary">Добавить</a></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header"><h2><i class="fas fa-calendar-week"></i> Расписание</h2></div>
+        <div class="card-body">
+            {% if schedule %}
+                {% set weekdays = {0:'Пн',1:'Вт',2:'Ср',3:'Чт',4:'Пт',5:'Сб',6:'Вс'} %}
+                <div class="schedule-list">
+                    {% for item in schedule %}
+                    <div class="schedule-item">
+                        <span class="schedule-day">{{ weekdays[item.weekday] }}</span>
+                        <span class="schedule-time">{{ item.start_time[:5] }} - {{ item.end_time[:5] }}</span>
+                        <span class="schedule-location">{{ item.location or 'Дорожка' }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state"><p>Расписания нет</p><a href="/trainer/group/{{ group_id }}/schedule/edit" class="btn btn-primary">Добавить</a></div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

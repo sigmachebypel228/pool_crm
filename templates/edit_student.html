@@ -1,10 +1,99 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Title</title>
-</head>
-<body>
+<!-- edit_student.html -->
+{% extends "base.html" %}
 
-</body>
-</html>
+{% block title %}Редактирование ученика - Swim CRM{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1><i class="fas fa-user-edit"></i> Редактирование ученика</h1>
+        <a href="javascript:history.back()" class="btn btn-outline">
+            <i class="fas fa-arrow-left"></i> Назад
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2><i class="fas fa-child"></i> {{ child.full_name }}</h2>
+        </div>
+        <div class="card-body">
+            {% if request.query_params.get('success') == 'updated' %}
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> Данные ученика успешно обновлены!
+                </div>
+            {% endif %}
+
+            <form method="post" action="/trainer/student/{{ child.id }}/edit">
+                <div class="form-section">
+                    <h3><i class="fas fa-user"></i> Основная информация</h3>
+
+                    <div class="form-group">
+                        <label for="full_name">ФИО ребёнка *</label>
+                        <input type="text" id="full_name" name="full_name" value="{{ child.full_name }}" required>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="age">Возраст *</label>
+                            <input type="number" id="age" name="age" min="3" max="17" value="{{ child.age }}" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="class_number">Класс</label>
+                            <input type="number" id="class_number" name="class_number" min="0" max="11" value="{{ child.class_number or '' }}">
+                            <small>0 - детский сад</small>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="school_name">Школа / Детский сад *</label>
+                        <input type="text" id="school_name" name="school_name" value="{{ child.school_name }}" required>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3><i class="fas fa-swimmer"></i> Информация о плавании</h3>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="swimming_years">Стаж плавания (лет)</label>
+                            <select id="swimming_years" name="swimming_years">
+                                <option value="1" {% if child.swimming_years == 1 %}selected{% endif %}>Менее года</option>
+                                <option value="2" {% if child.swimming_years == 2 %}selected{% endif %}>1-2 года</option>
+                                <option value="3" {% if child.swimming_years == 3 %}selected{% endif %}>2-3 года</option>
+                                <option value="4" {% if child.swimming_years == 4 %}selected{% endif %}>Более 3 лет</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="desired_lessons_per_week">Занятий в неделю *</label>
+                            <select id="desired_lessons_per_week" name="desired_lessons_per_week" required>
+                                <option value="1" {% if child.desired_lessons_per_week == 1 %}selected{% endif %}>1 раз в неделю</option>
+                                <option value="2" {% if child.desired_lessons_per_week == 2 %}selected{% endif %}>2 раза в неделю</option>
+                                <option value="3" {% if child.desired_lessons_per_week == 3 %}selected{% endif %}>3 раза в неделю</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="shift">Смена занятий *</label>
+                        <select id="shift" name="shift" required>
+                            <option value="day" {% if child.shift == 'day' %}selected{% endif %}>Дневная (до 17:00)</option>
+                            <option value="evening" {% if child.shift == 'evening' %}selected{% endif %}>Вечерняя (после 17:00)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Сохранить изменения
+                    </button>
+                    <a href="javascript:history.back()" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Отмена
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
