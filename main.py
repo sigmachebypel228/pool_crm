@@ -241,6 +241,13 @@ def auto_select_group(child_age: int, swimming_years: int, shift: str, db_cursor
     return dict(group) if group else None
 
 # Жизненный цикл приложения
+# main.py - обновите функцию lifespan (только часть с запуском бота)
+
+from vk_bot import start_vk_bot, stop_vk_bot
+
+
+# Удалите импорт get_db_cursor из database, если он там был
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Управляет жизненным циклом приложения"""
@@ -258,11 +265,13 @@ async def lifespan(app: FastAPI):
                 seed_test_data()
     upgrade_database()
 
-    # ЗАПУСКАЕМ VK БОТА
+    # ЗАПУСКАЕМ VK БОТА (без передачи курсора)
     try:
-        from database import get_db_cursor
-        with get_db_cursor() as cursor:
-            start_vk_bot(cursor)
+        from config import BOT_SETTINGS
+        if BOT_SETTINGS.get("enabled", True):
+            start_vk_bot()
+        else:
+            print("ℹ️ VK Bot disabled in configuration")
     except Exception as e:
         print(f"⚠️ VK Bot startup error: {e}")
 
@@ -1335,13 +1344,15 @@ async def admin_application_detail(
     )
 
 
+# main.py - найдите функцию approve_application и замените её на эту
+
 @app.post("/admin/application/{app_id}/approve")
 async def approve_application(
-    request: Request,
-    app_id: int,
-    group_id: Annotated[Optional[int], Form()] = None,  # если None, то автоматический подбор
-    current_user = Depends(get_current_user),
-    db_cursor = Depends(get_db)
+        request: Request,
+        app_id: int,
+        group_id: Annotated[Optional[int], Form()] = None,
+        current_user=Depends(get_current_user),
+        db_cursor=Depends(get_db)
 ):
     require_admin(current_user)
 
@@ -1355,14 +1366,14 @@ async def approve_application(
     if not group_id:
         group = auto_select_group(app["child_age"], app["swimming_years"], app["shift"], db_cursor)
         if not group:
-            # Не удалось подобрать группу автоматически
             return templates.TemplateResponse(
                 request,
                 "admin_application_detail.html",
                 {
                     "request": request,
                     "application": dict(app),
-                    "groups": db_cursor.execute("SELECT id, name, min_age, max_age, swimming_year, shift, max_students FROM groups WHERE is_active = 1").fetchall(),
+                    "groups": db_cursor.execute(
+                        "SELECT id, name, min_age, max_age, swimming_year, shift, max_students FROM groups WHERE is_active = 1").fetchall(),
                     "error": "Автоматический подбор группы не удался (нет свободных мест или не подходит по параметрам). Пожалуйста, выберите группу вручную или создайте новую группу.",
                     "current_user": current_user
                 },
@@ -1389,15 +1400,31 @@ async def approve_application(
     # Проверяем, существует ли родитель с таким телефоном
     db_cursor.execute("SELECT id FROM parents WHERE phone = ?", (app["parent_phone"],))
     parent = db_cursor.fetchone()
+
+    from init_db import hash_password  # Импортируем функцию хеширования
+
     if not parent:
-        # Создаём родителя, пароль = телефон (временное решение)
+        # Создаём родителя с хешированным паролем (пароль = телефон)
+        hashed_password = hash_password(app["parent_phone"])  # ХЕШИРУЕМ ПАРОЛЬ!
         db_cursor.execute(
-            "INSERT INTO parents (full_name, phone, email, password_hash) VALUES (?, ?, ?, ?)",
-            (app["parent_full_name"], app["parent_phone"], app["parent_email"], app["parent_phone"])
+            """INSERT INTO parents (full_name, phone, email, password_hash) 
+               VALUES (?, ?, ?, ?)""",
+            (app["parent_full_name"], app["parent_phone"], app["parent_email"], hashed_password)
         )
         parent_id = db_cursor.lastrowid
+        print(f"✅ Создан родитель {app['parent_full_name']} с хешированным паролем")
     else:
         parent_id = parent["id"]
+        # Проверяем, есть ли у родителя пароль, если нет - устанавливаем
+        db_cursor.execute("SELECT password_hash FROM parents WHERE id = ?", (parent_id,))
+        parent_data = db_cursor.fetchone()
+        if not parent_data["password_hash"]:
+            hashed_password = hash_password(app["parent_phone"])
+            db_cursor.execute(
+                "UPDATE parents SET password_hash = ? WHERE id = ?",
+                (hashed_password, parent_id)
+            )
+            print(f"✅ Обновлен пароль для родителя {parent_id}")
 
     # Создаём ребёнка
     db_cursor.execute(

@@ -157,3 +157,299 @@
 - **Вспомогательные функции**:
   - `can_manage_group()` — проверка доступа тренера к группе  
   - `auto_select_group()` — подбор группы по возрасту, году обучения, смене
+
+
+
+# Шифрование паролей и VK бот
+
+## 📋 Содержание
+1. [Введение](#введение)
+2. [Шифрование паролей (bcrypt)](#шифрование-паролей-bcrypt)
+3. [Интеграция с VK ботом](#интеграция-с-vk-ботом)
+4. [Установка и запуск](#установка-и-запуск)
+5. [Список библиотек](#список-библиотек)
+6. [Основные функции](#основные-функции)
+7. [Команды VK бота](#команды-vk-бота)
+
+---
+
+## Введение
+
+В данном проекте выполнены два ключевых улучшения для CRM системы бассейна:
+
+1. **Шифрование паролей** — все пароли пользователей хешируются с помощью bcrypt
+2. **Интеграция с VK ботом** — родители могут получать информацию о детях через ВКонтакте
+
+---
+
+## Шифрование паролей (bcrypt)
+
+### Проблема
+Изначально пароли хранились в базе данных в открытом виде, что создавало серьёзную уязвимость.
+
+### Решение
+Внедрено хеширование паролей с использованием библиотеки `bcrypt` с солью и 12 раундами шифрования.
+
+### Реализация
+
+#### Функции хеширования (`init_db.py`)
+
+```python
+import bcrypt
+
+def hash_password(password: str) -> str:
+    """Хеширует пароль с помощью bcrypt"""
+    if not password:
+        password = "default123"
+    salt = bcrypt.gensalt(rounds=12)
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Проверяет соответствие пароля хешу"""
+    if not plain_password or not hashed_password:
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode('utf-8'),
+            hashed_password.encode('utf-8')
+        )
+    except Exception:
+        return False
+```
+
+#### Создание пользователей с хешированным паролем
+
+```python
+# Создание родителя (пароль = телефон)
+hashed_password = hash_password(parent_phone)
+cursor.execute(
+    "INSERT INTO parents (full_name, phone, password_hash) VALUES (?, ?, ?)",
+    (full_name, phone, hashed_password)
+)
+
+# Создание тренера
+hashed_password = hash_password(password)
+cursor.execute(
+    "INSERT INTO trainers (full_name, login, password_hash) VALUES (?, ?, ?)",
+    (full_name, login, hashed_password)
+)
+```
+
+#### Проверка пароля при входе
+
+```python
+from init_db import verify_password
+
+# В эндпоинте /login
+if admin and verify_password(password, admin["password_hash"]):
+    # Успешный вход
+```
+
+
+---
+
+## Интеграция с VK ботом
+
+### Функциональность
+
+VK бот позволяет родителям:
+- 🔗 Привязать VK аккаунт к личному кабинету
+- 👶 Просматривать список своих детей и их группы
+- 📊 Проверять статус заявки на зачисление
+- 👤 Получать информацию о профиле
+
+### Структура бота
+
+#### 1. Конфигурация (`.env` файл)
+
+```env
+VK_GROUP_TOKEN=vk1.a.ваш_токен
+VK_GROUP_ID=239120595
+VK_BOT_ENABLED=True
+```
+
+#### 2. Отдельное соединение с БД (`bot_db.py`)
+
+Поскольку бот работает в отдельном потоке, ему требуется собственное соединение с базой данных:
+
+```python
+class BotDatabase:
+    def __init__(self):
+        self.connection = sqlite3.connect(
+            DATABASE_PATH,
+            check_same_thread=False,  # Важно для многопоточности
+            detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+        )
+        self.connection.row_factory = sqlite3.Row
+
+    def get_cursor(self):
+        return self.connection.cursor()
+```
+
+#### 3. Основной класс бота (`vk_bot.py`)
+
+```python
+class VKBot:
+    def __init__(self, group_token, group_id):
+        self.group_token = group_token
+        self.group_id = group_id
+        self.vk_session = None
+        self.vk = None
+        self.longpoll = None
+
+    def init_api(self):
+        """Инициализирует VK API и LongPoll"""
+        self.vk_session = vk_api.VkApi(token=self.group_token)
+        self.vk = self.vk_session.get_api()
+        self.longpoll = VkBotLongPoll(self.vk_session, self.group_id)
+
+    def send_message(self, user_id, message):
+        """Отправляет сообщение пользователю"""
+        self.vk.messages.send(user_id=user_id, message=message, random_id=0)
+
+    def link_vk_account(self, vk_id, phone, password):
+        """Привязывает VK аккаунт к родителю"""
+        # Поиск родителя по телефону
+        # Проверка пароля через verify_password()
+        # Сохранение vk_id в БД
+
+    def handle_message(self, user_id, message_text):
+        """Обработчик команд"""
+        if message_text == "/my_children":
+            return self.format_children_list(children)
+        elif message_text.startswith("/link"):
+            return self.link_vk_account(...)
+        # ... обработка других команд
+```
+
+#### 4. Запуск бота в фоновом потоке (`main.py`)
+
+```python
+from vk_bot import start_vk_bot, stop_vk_bot
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Запуск при старте
+    start_vk_bot()
+    yield
+    # Остановка при завершении
+    stop_vk_bot()
+```
+
+---
+
+## Список библиотек
+
+| Библиотека | Версия | Назначение |
+|------------|--------|------------|
+| **fastapi** | 0.104.1 | Веб-фреймворк для API |
+| **uvicorn** | 0.24.0 | ASGI сервер для запуска приложения |
+| **jinja2** | 3.1.2 | Шаблонизатор для HTML страниц |
+| **python-multipart** | 0.0.6 | Обработка form-data запросов |
+| **bcrypt** | 4.0.1 | Хеширование паролей |
+| **vk-api** | 11.9.9 | Работа с API ВКонтакте |
+| **python-dotenv** | 1.0.0 | Загрузка переменных из .env файла |
+
+### Установка одной командой
+
+```bash
+pip install fastapi uvicorn jinja2 python-multipart bcrypt vk-api python-dotenv
+```
+
+---
+
+## Основные функции
+
+### Шифрование (init_db.py)
+
+| Функция | Параметры | Возвращает | Описание |
+|---------|-----------|------------|----------|
+| `hash_password(password)` | `password: str` | `str` (хеш) | Хеширует пароль с помощью bcrypt |
+| `verify_password(plain, hashed)` | `plain: str, hashed: str` | `bool` | Проверяет соответствие пароля хешу |
+
+### VK бот (vk_bot.py)
+
+| Функция | Параметры | Описание |
+|---------|-----------|----------|
+| `__init__(group_token, group_id)` | токен, ID группы | Инициализация бота |
+| `init_api()` | - | Подключение к VK API |
+| `send_message(user_id, message)` | ID пользователя, текст | Отправка сообщения |
+| `link_vk_account(vk_id, phone, password)` | VK ID, телефон, пароль | Привязка аккаунта |
+| `get_parent_by_vk(vk_id)` | VK ID | Поиск родителя по VK ID |
+| `get_children_by_parent(parent_id)` | ID родителя | Получение списка детей |
+| `handle_message(user_id, text)` | ID пользователя, текст | Обработчик команд |
+| `run()` | - | Запуск LongPoll прослушивания |
+
+### Запуск бота (vk_bot.py)
+
+| Функция | Описание |
+|---------|----------|
+| `start_vk_bot()` | Запускает бота в фоновом потоке |
+| `stop_vk_bot()` | Останавливает бота |
+
+---
+
+## Команды VK бота
+
+| Команда | Формат | Описание |
+|---------|--------|----------|
+| `/help` | `/help` | Показать список команд |
+| `/link` | `/link [телефон] [пароль]` | Привязать VK к аккаунту |
+| `/my_children` | `/my_children` | Список детей и их групп |
+| `/status` | `/status [номер_заявки]` | Статус заявки на зачисление |
+| `/profile` | `/profile` | Информация о профиле |
+| `/apply` | `/apply` | Инструкция по подаче заявки |
+
+### Примеры использования
+
+```
+/link +79123456789 password123
+✅ Аккаунт привязан! Добро пожаловать, Сергей Петров
+
+/my_children
+👶 Ваши дети:
+   👤 Алексей Петров
+      Возраст: 7 лет
+      Группа: Рыбки
+      ✅ Зачислен
+
+/status 5
+📋 Заявка #5
+Ребёнок: Иван Иванов
+Статус: 🟢 Одобрена
+```
+
+---
+
+## Требования к группе ВК
+
+Для работы бота необходимо:
+
+1. **Создать группу** ВКонтакте (или использовать существующую)
+2. **Включить сообщения сообщества:**
+   - Управление → Сообщения → Включить сообщения сообщества
+3. **Создать ключ доступа с правами:**
+   - ✅ Управление сообществом
+   - ✅ Доступ к сообщениям сообщества
+4. **Добавить бота в администраторы** (опционально, но рекомендуется)
+
+---
+
+
+## Возможные ошибки и их решение
+
+### 1. VK Bot: "Cannot operate on a closed cursor"
+
+**Причина:** Бот использует курсор из основного приложения, который закрывается после HTTP запроса.
+
+**Решение:** Создано отдельное соединение в `bot_db.py`.
+
+### 2. VK Bot: "Access denied: no access to call this method"
+
+**Причина:** Недостаточно прав у токена.
+
+**Решение:** При создании токена выберите права:
+- Управление сообществом
+- Доступ к сообщениям сообщества
+

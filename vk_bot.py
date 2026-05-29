@@ -1,21 +1,20 @@
-# vk_bot.py (НОВЫЙ ФАЙЛ)
+# vk_bot.py (ИСПРАВЛЕННАЯ ВЕРСИЯ - замените весь файл)
 import vk_api
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 import re
 from datetime import datetime
-import asyncio
-from threading import Thread
+import threading
 import logging
+from bot_db import bot_db
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class VKBot:
-    def __init__(self, group_token, group_id, db_cursor):
+    def __init__(self, group_token, group_id):
         self.group_token = group_token
         self.group_id = group_id
-        self.db_cursor = db_cursor
         self.vk_session = None
         self.vk = None
         self.longpoll = None
@@ -27,11 +26,22 @@ class VKBot:
         try:
             self.vk_session = vk_api.VkApi(token=self.group_token)
             self.vk = self.vk_session.get_api()
-            self.longpoll = VkBotLongPoll(self.vk_session, self.group_id)
-            logger.info("✅ VK Bot initialized successfully")
+
+            # Проверяем, работает ли API
+            group = self.vk.groups.getById(group_id=self.group_id)
+            logger.info(f"✅ VK API initialized for group: {group[0]['name']}")
+
+            # Пытаемся создать LongPoll
+            try:
+                self.longpoll = VkBotLongPoll(self.vk_session, self.group_id)
+                logger.info("✅ VK Bot LongPoll initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ LongPoll not available: {e}")
+                self.longpoll = None
+
             return True
         except Exception as e:
-            logger.error(f"❌ Failed to initialize VK Bot: {e}")
+            logger.error(f"❌ Failed to initialize VK API: {e}")
             return False
 
     def send_message(self, user_id, message, keyboard=None):
@@ -44,6 +54,7 @@ class VKBot:
             }
             if keyboard:
                 params["keyboard"] = keyboard
+
             self.vk.messages.send(**params)
             logger.info(f"Message sent to {user_id}")
             return True
@@ -63,52 +74,49 @@ class VKBot:
     def link_vk_account(self, vk_id, phone, password):
         """Привязывает VK аккаунт к родителю"""
         try:
-            # Проверяем, существует ли родитель с таким телефоном и паролем
             from init_db import verify_password
 
-            self.db_cursor.execute(
-                "SELECT id, full_name, phone FROM parents WHERE phone = ?",
+            cursor = bot_db.get_cursor()
+
+            cursor.execute(
+                "SELECT id, full_name, phone, password_hash FROM parents WHERE phone = ?",
                 (phone,)
             )
-            parent = self.db_cursor.fetchone()
+            parent = cursor.fetchone()
 
             if not parent:
-                return False, "Родитель с таким телефоном не найден"
+                return False, "❌ Родитель с таким телефоном не найден"
 
             # Проверяем пароль
-            self.db_cursor.execute(
-                "SELECT password_hash FROM parents WHERE id = ?",
-                (parent["id"],)
-            )
-            password_hash = self.db_cursor.fetchone()["password_hash"]
-
-            if not verify_password(password, password_hash):
-                return False, "Неверный пароль"
+            if not verify_password(password, parent["password_hash"]):
+                return False, "❌ Неверный пароль"
 
             # Обновляем vk_id
-            self.db_cursor.execute(
+            cursor.execute(
                 "UPDATE parents SET vk_id = ? WHERE id = ?",
                 (str(vk_id), parent["id"])
             )
-            self.db_cursor.connection.commit()
+            bot_db.commit()
 
             return True, f"✅ Аккаунт привязан! Добро пожаловать, {parent['full_name']}"
 
         except Exception as e:
             logger.error(f"Failed to link account: {e}")
-            return False, "Ошибка при привязке аккаунта"
+            return False, "❌ Ошибка при привязке аккаунта"
 
     def get_parent_by_vk(self, vk_id):
         """Находит родителя по VK ID"""
-        self.db_cursor.execute(
+        cursor = bot_db.get_cursor()
+        cursor.execute(
             "SELECT id, full_name, phone FROM parents WHERE vk_id = ?",
             (str(vk_id),)
         )
-        return self.db_cursor.fetchone()
+        return cursor.fetchone()
 
     def get_children_by_parent(self, parent_id):
         """Получает список детей родителя"""
-        self.db_cursor.execute(
+        cursor = bot_db.get_cursor()
+        cursor.execute(
             """
             SELECT c.id, c.full_name, c.age, c.school_name, c.shift,
                    g.name as group_name, e.is_active
@@ -119,20 +127,12 @@ class VKBot:
             """,
             (parent_id,)
         )
-        return self.db_cursor.fetchall()
-
-    def get_application_status(self, app_id):
-        """Получает статус заявки"""
-        self.db_cursor.execute(
-            "SELECT * FROM applications WHERE id = ?",
-            (app_id,)
-        )
-        return self.db_cursor.fetchone()
+        return cursor.fetchall()
 
     def format_children_list(self, children):
         """Форматирует список детей для отправки"""
         if not children:
-            return "У вас пока нет зарегистрированных детей.\n\nОтправьте /apply чтобы подать заявку."
+            return "👶 У вас пока нет зарегистрированных детей.\n\nОтправьте /apply чтобы подать заявку."
 
         message = "👶 *Ваши дети:*\n\n"
         for child in children:
@@ -147,7 +147,7 @@ class VKBot:
 
     def handle_message(self, user_id, message_text):
         """Обрабатывает входящие сообщения"""
-        message_text = message_text.strip().lower()
+        message_text = message_text.strip()
 
         # Проверяем, привязан ли пользователь
         parent = self.get_parent_by_vk(user_id)
@@ -179,46 +179,20 @@ class VKBot:
             children = self.get_children_by_parent(parent["id"])
             return self.format_children_list(children)
 
-        elif message_text.startswith("/status"):
-            if not is_linked:
-                return "⚠️ Сначала привяжите аккаунт: /link [телефон] [пароль]"
-            parts = message_text.split()
-            if len(parts) >= 2:
-                try:
-                    app_id = int(parts[1])
-                    application = self.get_application_status(app_id)
-                    if application:
-                        status_text = {
-                            'new': '🟡 На рассмотрении',
-                            'processing': '🟠 В обработке',
-                            'approved': '🟢 Одобрена',
-                            'rejected': '🔴 Отклонена'
-                        }.get(application['status'], application['status'])
-
-                        return f"""📋 *Заявка #{application['id']}*
-
-Ребёнок: {application['child_full_name']}
-Статус: {status_text}
-Дата подачи: {application['created_at'][:10] if application['created_at'] else 'Неизвестно'}
-
-{'' if application['status'] != 'rejected' else f'Причина отказа: {application["rejection_reason"]}'}"""
-                    else:
-                        return f"❌ Заявка #{app_id} не найдена"
-                except ValueError:
-                    return "⚠️ Номер заявки должен быть числом"
-            else:
-                return "⚠️ Укажите номер заявки. Пример: /status 123"
-
         elif message_text == "/profile":
             if not is_linked:
                 return "⚠️ Сначала привяжите аккаунт: /link [телефон] [пароль]"
+            children_count = len(self.get_children_by_parent(parent["id"]))
             return f"""👤 *Ваш профиль*
 
 Имя: {parent['full_name']}
 Телефон: {parent['phone']}
 VK ID: {user_id}
 
-Связанные дети: {len(self.get_children_by_parent(parent['id']))}"""
+Связанные дети: {children_count}"""
+
+        elif message_text == "/ping":
+            return "🏓 Pong! Бот работает."
 
         else:
             return "❓ Неизвестная команда. Отправьте /help для списка команд."
@@ -228,7 +202,7 @@ VK ID: {user_id}
         return """📝 *Подача заявки на занятия*
 
 Для подачи заявки перейдите по ссылке:
-https://your-domain.com/apply
+http://localhost:8000/apply
 
 Или отправьте заявку в текстовом формате:
 Имя ребёнка, возраст, школа, смена (утро/вечер)
@@ -238,13 +212,14 @@ https://your-domain.com/apply
 
 Наш администратор свяжется с вами."""
 
-    def run(self):
-        """Запускает бота"""
-        if not self.init_api():
+    def run_longpoll(self):
+        """Запускает LongPoll режим"""
+        if not self.longpoll:
+            logger.warning("LongPoll not available")
             return
 
         self.running = True
-        logger.info("🚀 VK Bot started polling...")
+        logger.info("🚀 VK Bot LongPoll started...")
 
         try:
             for event in self.longpoll.listen():
@@ -252,26 +227,35 @@ https://your-domain.com/apply
                     break
 
                 if event.type == VkBotEventType.MESSAGE_NEW:
-                    if event.object and event.object.message:
-                        user_id = event.object.message['from_id']
-                        message_text = event.object.message.get('text', '')
+                    if event.object and hasattr(event.object, 'message'):
+                        message = event.object.message
+                        user_id = message['from_id']
+                        message_text = message.get('text', '')
 
-                        if message_text and not message_text.startswith('/') and not message_text.startswith('http'):
-                            # Ответ на сообщение
-                            response = self.handle_message(user_id, message_text)
-                            if response:
-                                self.send_message(user_id, response)
-
-                        elif message_text.startswith('/'):
-                            # Команда
+                        if message_text:
                             response = self.handle_message(user_id, message_text)
                             if response:
                                 self.send_message(user_id, response)
 
         except Exception as e:
-            logger.error(f"VK Bot error: {e}")
+            logger.error(f"VK Bot LongPoll error: {e}")
         finally:
-            logger.info("VK Bot stopped")
+            logger.info("VK Bot LongPoll stopped")
+
+    def run(self):
+        """Запускает бота"""
+        if not self.init_api():
+            return
+
+        if self.longpoll:
+            self.run_longpoll()
+        else:
+            logger.warning("⚠️ LongPoll not available. Use webhook mode instead.")
+            logger.info("   Set up webhook at: https://your-domain.com/api/vk/webhook")
+            self.running = True
+            while self.running:
+                import time
+                time.sleep(1)
 
     def stop(self):
         """Останавливает бота"""
@@ -283,25 +267,24 @@ https://your-domain.com/apply
 vk_bot_instance = None
 
 
-def start_vk_bot(db_cursor):
+def start_vk_bot():
     """Запускает VK бота в отдельном потоке"""
     global vk_bot_instance
 
     from config import VK_CONFIG
 
-    if not VK_CONFIG["group_token"] or VK_CONFIG["group_token"] == "ваш_токен_здесь":
-        logger.warning("⚠️ VK Bot not configured. Set VK_GROUP_TOKEN environment variable")
+    if not VK_CONFIG["group_token"] or VK_CONFIG["group_token"] == "ваш_токен_сюда":
+        logger.warning("⚠️ VK Bot not configured. Set VK_GROUP_TOKEN in .env file")
         return None
 
     if vk_bot_instance is None:
         vk_bot_instance = VKBot(
             group_token=VK_CONFIG["group_token"],
-            group_id=VK_CONFIG["group_id"],
-            db_cursor=db_cursor
+            group_id=VK_CONFIG["group_id"]
         )
 
         # Запускаем в отдельном потоке
-        thread = Thread(target=vk_bot_instance.run, daemon=True)
+        thread = threading.Thread(target=vk_bot_instance.run, daemon=True)
         thread.start()
         logger.info("✅ VK Bot started in background thread")
 

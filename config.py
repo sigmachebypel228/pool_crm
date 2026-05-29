@@ -3,7 +3,7 @@ import os
 
 # VK Configuration
 VK_CONFIG = {
-    "group_token": os.environ.get("VK_GROUP_TOKEN", "vk1.a.anNaJCeOS28-80xGjk3h5AAc85btGUYYzgUZKWXh91G-_EVlxVr5Xa2JBPnxCs0y1X6XJCa8DkocBAtAo3qDPjXZriFPnK-Ys6WSDbog1HjDYPPmPv88e4TCSu2rg1w-cRjZitVb-gSLaibiINf__JndTED8hC8fkPXQ9zcJBPbcDqfFnfnhMK0h0sL_TLZZUVgGQZxheTByXO8W8RQV7Q"),
+    "group_token": os.environ.get("VK_GROUP_TOKEN", "vk1.a.BtBWmBXCcj8HJImOL4ZD5EaMwxkas0JTkphSlYOTBNIEK_lLMeEz0hcUhnOxu7gLps7EwiqN0YgnDo2GbpG1u5mP4sOR7NV8TsLa0U24Iz6CzDyUO9u8bcYZ3KXnoFBQYZoOEQBX8AYpD-d2a0ep-x6U0JFJG5aXASVZKAFmxqMelwf9q3XCLd5ShSDjyi1Gp9eHBAbRo0cuY6WaU2aU_Q"),
     "group_id": int(os.environ.get("VK_GROUP_ID", 239120595)),  # ID группы (число)
     "api_version": "5.131"
 }
